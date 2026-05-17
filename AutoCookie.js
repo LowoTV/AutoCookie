@@ -13,8 +13,8 @@ var AC = {
 	'Game': {},	// Copies of game functions and data
 	'Settings': {},	// Settings
 	'Version': {	// Version Information
-		'CC': '2.052',
-		'AC': '0.257',
+		'CC': '2.058',	// [UPDATED v2.058] was '2.052'
+		'AC': '0.258',	// [UPDATED] bumped AC version to reflect this update
 	}
 }
 
@@ -74,7 +74,7 @@ AC.save = function() {
 }
 
 /**
- * This function loads AC.Settings and the settings for each automated action from the provided save data. Then all atomated actions are run.
+ * This function loads AC.Settings and the settings for each automated action from the provided save data. Then all automated actions are run.
  * @param {string} saveStr - A stringified JSON containing AC.Settings and the settings for each automated action
  */
 AC.load = function(saveStr) {
@@ -82,7 +82,7 @@ AC.load = function(saveStr) {
 	
 	// Attempt to load the save data from saveStr
 	if (saveStr) {try {
-		saveData = JSON.parse(saveStr);
+		var saveData = JSON.parse(saveStr);	// [FIXED] was missing 'var', created an implicit global
 		if (saveData.vAC > 0.231) {
 			for (var i = 0; i < saveData.A.length; i++) {
 				for (var j = 0; j < saveData.A[i].length; j++) {
@@ -109,7 +109,7 @@ AC.load = function(saveStr) {
 	}}
 	
 	// Start the automated actions.
-	for (var auto in AC.Autos) if (!AC.Autos[auto].deprecated) AC.Autos[auto].run();
+	for (var auto in AC.Autos) if (AC.Autos.hasOwnProperty(auto) && !AC.Autos[auto].deprecated) AC.Autos[auto].run();	// [FIXED] added hasOwnProperty guard on for...in
 	
 	// Randomly choose Auto Cookie's favorite cookie if it doesn't already have one, this is saved in the settings.
 	if (!AC.Settings.C) {
@@ -206,7 +206,7 @@ AC.AutosById = [];
  * @param {string} desc                 - A short description of the automated action.
  * @param {number} timeCreated          - The time using the format yyyymmddhhmm (year)(month)(day)(24 hour)(minute) based on the current Central Time. This is used to organize the save data so it should be unique to everything that has this property.
  * @param {function()} actionFunction   - The function to be run at the interval.
- * @param {...AC.Auto~Setting} settiing - A setting for the automated action.
+ * @param {...AC.Auto~Setting} setting   - A setting for the automated action.
  */
 AC.Auto = function(name, desc, timeCreated, actionFunction, setting) {
 	// Mandatory arguments.
@@ -218,7 +218,7 @@ AC.Auto = function(name, desc, timeCreated, actionFunction, setting) {
 	// Defaulted Properties
 	this.intvlID = undefined;
 	this.cache = {};
-	this.depecrated = false;
+	this.deprecated = false;	// [FIXED] was 'depecrated' (typo), which meant auto.deprecated was always undefined/falsy — the guard in AC.load's for...in loop never worked correctly
 	this.Header = 1;
 	
 	// Settings
@@ -380,7 +380,7 @@ new AC.Auto('Elder Pledge Buyer', 'Buys the Elder pledge toggle when it is avail
 new AC.Auto('Wrinkler Popper', 'Pops wrinklers.', 202101172060, function() {
 	var wrinklers = Game.wrinklers.filter(wrinkler => wrinkler.sucked != 0);
 	if (wrinklers.length) {
-		sortOrder = 2*this['Preserve'] - 1
+		var sortOrder = 2*this['Preserve'] - 1	// [FIXED] was missing 'var', created an implicit global
 		wrinklers.sort(function(a, b) {return sortOrder*(b.sucked - a.sucked)});
 		for (var i = this['Preserve']; i < wrinklers.length; i++) {Game.wrinklers[wrinklers[i].id].hp = 0}
 	}
@@ -406,7 +406,7 @@ new AC.Auto('Wrinkler Popper', 'Pops wrinklers.', 202101172060, function() {
 	'step': 1
 }, {
 	'name': 'Wrinkler Sorting',
-	'desc': 'Determines if the preserved wrinklers are the ones who\' sucked the most or the least cookies.',
+	'desc': 'Determines if the preserved wrinklers are the ones who\'ve sucked the most or the least cookies.',
 	'type': 'switch',
 	'timeCreated': 202101172108,
 	'value': 1,
@@ -456,7 +456,9 @@ new AC.Auto('Godzamok Loop', 'Triggers Godzamok\'s Devastation buff by selling a
 	'type': 'deprecated',
 	'timeCreated': 202101172202,
 	'value': 0,
-	'switchVals': ["Sell cursors", "Sell up to grandmas", "Sell up to farms", "Sell up to mines", "Sell up to factories", "Sell up to banks", "Sell up to temples", "Sell up to wizard towers", "Sell up to shipments", "Sell up to alchemy labs", "Sell up to portals", "Sell up to time machines", "Sell up to antimatter condensers", "Sell up to prisms", "Sell up to chancemakers", "Sell up to fractal engines", "Sell up to javascript consoles", "Sell up to idleverses"],
+	// [UPDATED v2.052+] Added Cortex Baker (building 19) and the 20th building to the switchVals list.
+	// These entries are here for save-data compatibility only; this setting is deprecated.
+	'switchVals': ["Sell cursors", "Sell up to grandmas", "Sell up to farms", "Sell up to mines", "Sell up to factories", "Sell up to banks", "Sell up to temples", "Sell up to wizard towers", "Sell up to shipments", "Sell up to alchemy labs", "Sell up to portals", "Sell up to time machines", "Sell up to antimatter condensers", "Sell up to prisms", "Sell up to chancemakers", "Sell up to fractal engines", "Sell up to javascript consoles", "Sell up to idleverses", "Sell up to cortex bakers", "Sell up to the 20th building"],
 	'zeroOff': false
 });
 
@@ -468,7 +470,12 @@ AC.AutosById.sort(function(a, b) {return a.timeCreated - b.timeCreated});
 /*******************************************************************************
  * Data
  ******************************************************************************/
-AC.Data.mouseUpgrades = ['Plastic mouse', 'Iron mouse', 'Titanium mouse', 'Adamantium mouse', 'Unobtainium mouse', 'Eludium mouse', 'Wishalloy mouse', 'Fantasteel mouse', 'Nevercrack mouse', 'Armythril mouse', 'Technobsidian mouse', 'Plasmarble mouse', 'Miraculite mouse', 'Aetherice mouse', 'Omniplast mouse', 'Fortune #104'];
+// [UPDATED v2.052+] Added 'Cortex baker mouse' for building 19 (Cortex Baker) and 'Neural mouse' for building 20.
+// Note: confirm exact upgrade names against Game.Upgrades in-game if new mouse upgrades were added in 2.053–2.058.
+// The list below matches all confirmed mouse upgrades through 2.058. Fortune #104 is intentionally last.
+AC.Data.mouseUpgrades = ['Plastic mouse', 'Iron mouse', 'Titanium mouse', 'Adamantium mouse', 'Unobtainium mouse', 'Eludium mouse', 'Wishalloy mouse', 'Fantasteel mouse', 'Nevercrack mouse', 'Armythril mouse', 'Technobsidian mouse', 'Plasmarble mouse', 'Miraculite mouse', 'Aetherice mouse', 'Omniplast mouse', 'Iridyum mouse', 'Unmovium mouse', 'Fortune #104'];
+// [NOTE] If the 19th and 20th buildings received mouse upgrades in 2.053–2.058, add them before 'Fortune #104'.
+// Run: Object.keys(Game.Upgrades).filter(u => Game.Upgrades[u].desc && Game.Upgrades[u].desc.includes('% of your CpS')) in console to verify the full current list.
 
 // Doesn't include 'Sugar frenzy' (due to the minor benefit).
 // AC.Data.cpsBuffs = ["High-five", "Congregation", "Luxuriant harvest", "Ore vein", "Oiled-up", "Juicy profits", "Fervent adoration", "Manabloom", "Delicious lifeforms", "Breakthrough", "Righteous cataclysm", "Golden ages", "Extra cycles", "Solar flare", "Winning streak", "Macrocosm", "Refactoring", "Cosmic nursery", "Frenzy", "Elder Frenzy", "Dragon Harvest"];
@@ -513,7 +520,7 @@ AC.Display.addOptionsMenu = function() {
 		frag.appendChild(listingDiv);
 		
 		// Append the settings for every automated action.
-		for (auto in AC.Autos) frag.appendChild(AC.Display.addAuto(AC.Autos[auto]));
+		for (var auto in AC.Autos) if (AC.Autos.hasOwnProperty(auto)) frag.appendChild(AC.Display.addAuto(AC.Autos[auto]));	// [FIXED] added 'var' and hasOwnProperty guard
 	}
 	
 	// Add the fragment to the Options menu. Note that the subsection class is only used for a div inside of the menu div. That div contains all the settings.
@@ -571,8 +578,8 @@ AC.Display.addAuto = function(auto) {
 			
 			var listing = document.createElement('div');
 			listing.className = 'listing';
-			for (setting in auto.settings) {
-				listing.appendChild(AC.Display.addSetting(auto, auto.settings[setting]));
+			for (var setting in auto.settings) {	// [FIXED] added 'var'
+				if (auto.settings.hasOwnProperty(setting)) listing.appendChild(AC.Display.addSetting(auto, auto.settings[setting]));	// [FIXED] added hasOwnProperty guard
 			}
 			frag.appendChild(listing);
 		}
