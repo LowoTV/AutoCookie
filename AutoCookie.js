@@ -435,14 +435,13 @@ new AC.Auto('Autoclicker', 'Clicks the cookie once every interval.', 20210117205
 	Game.ClickCookie();
 }, {
 	'name': 'Interval',
-	'desc': 'How often the cookie is clicked.',
-	'type': 'slider',
+	'desc': 'Automatically clicks the big cookie.',
+	'type': 'toggle',
 	'timeCreated': 202101172101,
 	'value': 0,
-	'units': 'ms',
-	'min': 0,
-	'max': 1000,
-	'step': 10
+	'onValue': 10,
+	'switchVals': ['Autoclicker Off', 'Autoclicker On'],
+	'zeroOff': true
 });
 
 /**
@@ -456,14 +455,13 @@ new AC.Auto('Golden Cookie Clicker', 'Clicks golden cookies and other shimmers a
 	}).bind(this));
 }, {
 	'name': 'Interval',
-	'desc': 'How often to check for golden cookies.',
-	'type': 'slider',
+	'desc': 'Automatically clicks golden cookies and shimmers.',
+	'type': 'toggle',
 	'timeCreated': 202101172102,
 	'value': 0,
-	'units': 'ms',
-	'min': 0,
-	'max': 5000,
-	'step': 50
+	'onValue': 50,
+	'switchVals': ['Golden Cookie Clicker Off', 'Golden Cookie Clicker On'],
+	'zeroOff': true
 }, {
 	'name': 'Click Wrath Cookies',
 	'desc': 'Whether or not to click wrath cookies.',
@@ -489,14 +487,13 @@ new AC.Auto('Fortune Clicker', 'Clicks on fortunes in the news ticker as they ap
 	if (Game.TickerEffect && Game.TickerEffect.type=='fortune') {Game.tickerL.click()}
 }, {
 	'name': 'Interval',
-	'desc': 'How often to check for fortunes.',
-	'type': 'slider',
+	'desc': 'Automatically clicks fortunes in the news ticker.',
+	'type': 'toggle',
 	'timeCreated': 202101172103,
 	'value': 0,
-	'units': 'ms',
-	'min': 0,
-	'max': 10000,
-	'step': 100
+	'onValue': 100,
+	'switchVals': ['Fortune Clicker Off', 'Fortune Clicker On'],
+	'zeroOff': true
 });
 
 /**
@@ -513,14 +510,13 @@ new AC.Auto('Elder Pledge Buyer', 'Buys the Elder pledge toggle when it is avail
 	}
 }, {
 	'name': 'Interval',
-	'desc': 'How often to check for the option to buy the Elder pledge toggle.',
-	'type': 'slider',
+	'desc': 'Automatically buys the Elder Pledge when available.',
+	'type': 'toggle',
 	'timeCreated': 202101172104,
 	'value': 0,
-	'units': 'ms',
-	'min': 0,
-	'max': 5000,
-	'step': 50
+	'onValue': 50,
+	'switchVals': ['Elder Pledge Buyer Off', 'Elder Pledge Buyer On'],
+	'zeroOff': true
 }, {
 	'name': 'Slow Down',
 	'desc': 'If Slow Down is on, Elder Pledge Buyer will wait until the timer on the current Elder pledge runs out before checking again.',
@@ -537,20 +533,19 @@ new AC.Auto('Elder Pledge Buyer', 'Buys the Elder pledge toggle when it is avail
 new AC.Auto('Wrinkler Popper', 'Pops wrinklers.', 202101172060, function() {
 	var wrinklers = Game.wrinklers.filter(wrinkler => wrinkler.sucked != 0);
 	if (wrinklers.length) {
-		var sortOrder = 2*this['Preserve'] - 1	// [FIXED] was missing 'var', created an implicit global
+		var sortOrder = 2*this['Preserve'] - 1
 		wrinklers.sort(function(a, b) {return sortOrder*(b.sucked - a.sucked)});
 		for (var i = this['Preserve']; i < wrinklers.length; i++) {Game.wrinklers[wrinklers[i].id].hp = 0}
 	}
 }, {
 	'name': 'Interval',
-	'desc': 'How often to check for wrinklers to pop.',
-	'type': 'slider',
+	'desc': 'Automatically pops wrinklers on a timer.',
+	'type': 'toggle',
 	'timeCreated': 202101172106,
 	'value': 0,
-	'units': 'ms',
-	'min': 0,
-	'max': 3600000,
-	'step': 10000
+	'onValue': 10000,
+	'switchVals': ['Wrinkler Popper Off', 'Wrinkler Popper On'],
+	'zeroOff': true
 }, {
 	'name': 'Preserve',
 	'desc': 'Will keep this many wrinklers alive.',
@@ -569,7 +564,6 @@ new AC.Auto('Wrinkler Popper', 'Pops wrinklers.', 202101172060, function() {
 	'value': 1,
 	'switchVals': ['Most Sucked', 'Least Sucked'],
 	'zeroOff': false
-	
 });
 
 
@@ -787,6 +781,27 @@ AC.Display.addSetting = function(auto, setting) {
 	
 	if (setting.type === 'deprecated' || setting.type === 'header') {
 		// Do Nothing.
+	} else if (setting.type === 'toggle') {
+		// A toggle switches Interval between 0 (off) and setting.onValue (on).
+		var a = document.createElement('a');
+		a.className = auto[setting.name] ? 'option' : 'option off';
+		a.textContent = auto[setting.name] ? setting.switchVals[1] : setting.switchVals[0];
+		a.id = auto.name + ' ' + setting.name + ' Toggle';
+		a.onclick = function() {
+			var isOn = !!auto[setting.name];
+			auto[setting.name] = isOn ? 0 : setting.onValue;
+			var btn = l(auto.name + ' ' + setting.name + ' Toggle');
+			btn.textContent = auto[setting.name] ? setting.switchVals[1] : setting.switchVals[0];
+			btn.className = auto[setting.name] ? 'option' : 'option off';
+			auto.run();
+			PlaySound('snd/tick.mp3');
+		};
+		frag.appendChild(a);
+
+		var label = document.createElement('label');
+		label.textContent = setting.desc;
+		frag.appendChild(label);
+		frag.appendChild(document.createElement('br'));
 	} else if (setting.type === 'switch') {
 		// Add a button that when clicked cycles through this settings values.
 		var a = document.createElement('a');
