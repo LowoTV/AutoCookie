@@ -21,6 +21,71 @@ var AC = {
 AC.Version.Full = AC.Version.CC + ' / ' + AC.Version.AC;
 
 /*******************************************************************************
+ * Debug
+ *
+ * Set AC.debug.enabled = true in the browser console to turn on verbose logging,
+ * or flip the default below. All debug output is prefixed with [AutoCookie] so
+ * it's easy to filter in DevTools (Console filter: "AutoCookie").
+ *
+ * Quick start:
+ *   AC.debug.enabled = true;   // turn on
+ *   AC.debug.enabled = false;  // turn off
+ *   AC.debug.dump();           // print a full state snapshot right now
+ ******************************************************************************/
+AC.debug = {
+	enabled: true,	// Set to false to silence all debug output in production
+
+	/** Log a message (respects AC.debug.enabled). */
+	log: function() {
+		if (!AC.debug.enabled) return;
+		var args = Array.prototype.slice.call(arguments);
+		args.unshift('[AutoCookie]');
+		console.log.apply(console, args);
+	},
+
+	/** Log a warning unconditionally (always visible). */
+	warn: function() {
+		var args = Array.prototype.slice.call(arguments);
+		args.unshift('[AutoCookie WARN]');
+		console.warn.apply(console, args);
+	},
+
+	/** Log an error unconditionally (always visible). */
+	error: function() {
+		var args = Array.prototype.slice.call(arguments);
+		args.unshift('[AutoCookie ERROR]');
+		console.error.apply(console, args);
+	},
+
+	/** Dump a snapshot of AC state to the console. */
+	dump: function() {
+		console.group('[AutoCookie] State Dump');
+		console.log('Version:', AC.Version.Full);
+		console.log('Cache:', JSON.parse(JSON.stringify(AC.Cache)));
+		console.log('Settings:', JSON.parse(JSON.stringify(AC.Settings)));
+		console.log('AutosById count:', AC.AutosById.length);
+		AC.AutosById.forEach(function(auto, i) {
+			console.group('Auto[' + i + ']: ' + auto.name);
+			console.log('deprecated:', auto.deprecated);
+			console.log('intvlID:', auto.intvlID);
+			console.log('Interval:', auto.Interval);
+			console.log('cache:', auto.cache);
+			console.log('settingsById:', auto.settingsById.map(function(s) { return s.name + ' (' + s.type + ')'; }));
+			console.groupEnd();
+		});
+		// Check critical Game APIs exist
+		var apiChecks = ['ClickCookie', 'shimmers', 'wrinklers', 'Upgrades', 'ObjectsById', 'hasBuff', 'hasGod', 'registerHook', 'UpdateMenu', 'prefs', 'Win', 'Popup', 'Notify'];
+		var missing = apiChecks.filter(function(k) { return typeof Game[k] === 'undefined'; });
+		if (missing.length) {
+			console.warn('Missing Game APIs:', missing);
+		} else {
+			console.log('All expected Game APIs present.');
+		}
+		console.groupEnd();
+	}
+};
+
+/*******************************************************************************
  * Cookie Clicker Functions
  *
  * Auto Cookie depends on the following functions being declared by Cookie Clicker. They are kept here in the unlikely event that they are removed from main.js
@@ -37,25 +102,64 @@ AC.Version.Full = AC.Version.CC + ' / ' + AC.Version.AC;
  * This function is called by Cookie Clicker to initialize Auto Cookie. It loads the default settings if no save data is loaded by Cookie Clicker and starts the automated actions in AC.Autos. It also registers hooks with Cookie Clicker and injects code into the game.
  */
 AC.init = function() {
+	AC.debug.log('init() called. CC version reported by game:', (typeof Game !== 'undefined' ? Game.version : 'Game not defined!'));
+	AC.debug.log('AC version:', AC.Version.Full);
+
+	// Sanity-check that Game exists and has the APIs we depend on.
+	if (typeof Game === 'undefined') {
+		AC.debug.error('Game is not defined — AutoCookie cannot initialise. Is this running inside Cookie Clicker?');
+		return;
+	}
+	var requiredGameAPIs = ['ClickCookie', 'shimmers', 'wrinklers', 'Upgrades', 'ObjectsById', 'hasBuff', 'registerHook', 'UpdateMenu', 'prefs', 'Win'];
+	requiredGameAPIs.forEach(function(api) {
+		if (typeof Game[api] === 'undefined') {
+			AC.debug.warn('Game.' + api + ' is undefined — some features may not work.');
+		}
+	});
+
 	AC.Cache.loaded = false;
 	Game.Win('Third-party');
+	AC.debug.log('init() waiting 500 ms for save data to load...');
 	
 	setTimeout(function() {
+		AC.debug.log('init() timeout fired. AC.Cache.loaded =', AC.Cache.loaded);
+
 		// After waiting for the delay, check if Auto Cookie's save data has been loaded and the automated actions have been started, if not use the default settings and start the automated actions.
-		if (!AC.Cache.loaded) {AC.load(false)};
+		if (!AC.Cache.loaded) {
+			AC.debug.log('No save data was loaded by Cookie Clicker; using defaults.');
+			AC.load(false);
+		} else {
+			AC.debug.log('Save data was already loaded by Cookie Clicker.');
+		}
 		
 		// Register hooks with Cookie Clicker.
-		Game.registerHook('ticker', AC.newsTicker);
+		try {
+			Game.registerHook('ticker', AC.newsTicker);
+			AC.debug.log('Registered ticker hook.');
+		} catch(err) {
+			AC.debug.error('Failed to register ticker hook:', err);
+		}
 		
 		// Inject code into Cookie Clicker.
-		AC.Game.UpdateMenu = Game.UpdateMenu;
-		Game.UpdateMenu = function() {
-			AC.Game.UpdateMenu();
-			AC.Display.UpdateMenu();
+		try {
+			AC.Game.UpdateMenu = Game.UpdateMenu;
+			Game.UpdateMenu = function() {
+				AC.Game.UpdateMenu();
+				AC.Display.UpdateMenu();
+			}
+			AC.debug.log('Injected Game.UpdateMenu.');
+		} catch(err) {
+			AC.debug.error('Failed to inject Game.UpdateMenu:', err);
 		}
 		
 		// Notify the player that Auto Cookie has loaded.
-		if (Game.prefs.popups) {Game.Popup('Auto Cookie ' + AC.Version.Full + ' loaded.')} else {Game.Notify('Auto Cookie ' + AC.Version.Full + ' loaded.', '', '', 1, 1)}
+		try {
+			if (Game.prefs.popups) {Game.Popup('Auto Cookie ' + AC.Version.Full + ' loaded.')} else {Game.Notify('Auto Cookie ' + AC.Version.Full + ' loaded.', '', '', 1, 1)}
+		} catch(err) {
+			AC.debug.error('Failed to show load notification:', err);
+		}
+
+		AC.debug.log('init() complete. Run AC.debug.dump() for a full state snapshot.');
 	}, 500);
 }
 
@@ -64,13 +168,21 @@ AC.init = function() {
  * @returns {string}
  */
 AC.save = function() {
-	for (var i = 0; i < AC.AutosById.length; i++) {
-		AC.Settings.A[i] = [];
-		for (var j = 0; j < AC.AutosById[i].settingsById.length; j++) {
-			AC.Settings.A[i].push(AC.AutosById[i][AC.AutosById[i].settingsById[j].name]);
+	AC.debug.log('save() called.');
+	try {
+		for (var i = 0; i < AC.AutosById.length; i++) {
+			AC.Settings.A[i] = [];
+			for (var j = 0; j < AC.AutosById[i].settingsById.length; j++) {
+				AC.Settings.A[i].push(AC.AutosById[i][AC.AutosById[i].settingsById[j].name]);
+			}
 		}
+		var result = JSON.stringify(AC.Settings);
+		AC.debug.log('save() produced', result.length, 'chars.');
+		return result;
+	} catch(err) {
+		AC.debug.error('save() threw an error:', err);
+		return '';
 	}
-	return JSON.stringify(AC.Settings);
 }
 
 /**
@@ -78,16 +190,23 @@ AC.save = function() {
  * @param {string} saveStr - A stringified JSON containing AC.Settings and the settings for each automated action
  */
 AC.load = function(saveStr) {
+	AC.debug.log('load() called. saveStr type:', typeof saveStr, saveStr ? '(has data)' : '(no data — using defaults)');
 	AC.Cache.loaded = true;
 	
 	// Attempt to load the save data from saveStr
 	if (saveStr) {try {
-		var saveData = JSON.parse(saveStr);	// [FIXED] was missing 'var', created an implicit global
+		var saveData = JSON.parse(saveStr);
+		AC.debug.log('load() parsed save data. vAC =', saveData.vAC, ', vCC =', saveData.vCC);
 		if (saveData.vAC > 0.231) {
+			AC.debug.log('load() save data version is compatible. Loading', saveData.A ? saveData.A.length : 0, 'auto setting blocks.');
 			for (var i = 0; i < saveData.A.length; i++) {
+				AC.debug.log('  Loading settings for Auto[' + i + ']:', AC.AutosById[i] ? AC.AutosById[i].name : '(out of range!)');
 				for (var j = 0; j < saveData.A[i].length; j++) {
 					if (typeof (AC.AutosById[i][AC.AutosById[i].settingsById[j].name]) !== 'undefined') {
+						AC.debug.log('    Setting', AC.AutosById[i].settingsById[j].name, '=', saveData.A[i][j]);
 						AC.AutosById[i][AC.AutosById[i].settingsById[j].name] = saveData.A[i][j];
+					} else {
+						AC.debug.warn('    Skipping unknown setting index', j, 'on Auto[' + i + ']');
 					}
 				}
 			}
@@ -95,28 +214,45 @@ AC.load = function(saveStr) {
 			delete saveData.vAC;
 			for (var setting in saveData) {
 				if (AC.Settings.hasOwnProperty(setting)) {
+					AC.debug.log('  Loading global setting:', setting, '=', saveData[setting]);
 					AC.Settings[setting] = saveData[setting];
 				}
 			}
 		} else {
+			AC.debug.warn('load() save data vAC (' + saveData.vAC + ') is too old (need > 0.231). Falling back to defaults.');
 			console.log('Save Data: ' + saveStr);
 			AC.errorNotify('Your save data could not be loaded due to an update. Your raw save data has been logged on your browser\'s javascript console.');
 		}
 	} catch(err) {
+		AC.debug.error('load() failed to parse save data:', err);
 		console.error(err);
 		console.log('Save Data: ' + saveStr);
 		AC.errorNotify('Your save data could not be loaded due to an error. Your raw save data has been logged on your browser\'s javascript console.');
 	}}
 	
 	// Start the automated actions.
-	for (var auto in AC.Autos) if (AC.Autos.hasOwnProperty(auto) && !AC.Autos[auto].deprecated) AC.Autos[auto].run();	// [FIXED] added hasOwnProperty guard on for...in
+	AC.debug.log('load() starting automated actions...');
+	for (var auto in AC.Autos) {
+		if (AC.Autos.hasOwnProperty(auto)) {
+			if (AC.Autos[auto].deprecated) {
+				AC.debug.log('  Skipping deprecated auto:', auto);
+			} else {
+				var ran = AC.Autos[auto].run();
+				AC.debug.log('  run() for', auto, '→', ran ? 'started (interval=' + AC.Autos[auto].Interval + 'ms)' : 'not started (Interval is 0 or invalid)');
+			}
+		}
+	}
 	
 	// Randomly choose Auto Cookie's favorite cookie if it doesn't already have one, this is saved in the settings.
 	if (!AC.Settings.C) {
 		var listCookies = ['frozen cookies', 'automatic cookies'];
 		for (var upgrade in Game.Upgrades) {if (Game.Upgrades[upgrade].pool == 'cookie') {listCookies.push(Game.Upgrades[upgrade].name.toLowerCase())}};
 		AC.Settings.C = choose(listCookies);
+		AC.debug.log('load() chose favorite cookie:', AC.Settings.C);
+	} else {
+		AC.debug.log('load() favorite cookie already set:', AC.Settings.C);
 	}
+	AC.debug.log('load() complete.');
 }
 
 /**
@@ -249,18 +385,39 @@ AC.Auto.prototype.run = function(runImmediately, interval) {
 	runImmediately ??= false;
 	interval ??= this.Interval ?? 0;
 	
+	AC.debug.log('run() called for "' + this.name + '". runImmediately=' + runImmediately + ', interval=' + interval);
+
 	// Stop the action function if it is running
+	if (this.intvlID) {
+		AC.debug.log('  Clearing existing interval ID:', this.intvlID, 'for "' + this.name + '"');
+	}
 	this.intvlID = clearInterval(this.intvlID);
 	
 	// Call the actionFunction if runImmediately is truthy and call it at interval if interval is a positive number
 	var success = false;
 	if (runImmediately) {
-		this.actionFunction();
+		AC.debug.log('  Running "' + this.name + '" immediately.');
+		try {
+			this.actionFunction();
+		} catch(err) {
+			AC.debug.error('  actionFunction() for "' + this.name + '" threw during immediate run:', err);
+		}
 		success = true;
 	}
 	if (typeof interval === 'number' && interval > 0) {
-		this.intvlID = setInterval(this.actionFunction, interval);
+		this.intvlID = setInterval((function() {
+			try {
+				this.actionFunction();
+			} catch(err) {
+				AC.debug.error('actionFunction() for "' + this.name + '" threw during interval tick:', err);
+			}
+		}).bind(this), interval);
+		AC.debug.log('  Scheduled "' + this.name + '" every', interval, 'ms. intvlID =', this.intvlID);
 		success = true;
+	} else if (interval === 0) {
+		AC.debug.log('  "' + this.name + '" interval is 0 — not scheduling (disabled).');
+	} else {
+		AC.debug.warn('  "' + this.name + '" has unexpected interval value:', interval, '— not scheduling.');
 	}
 	return success;
 }
@@ -423,12 +580,24 @@ new AC.Auto('Godzamok Loop', 'Triggers Godzamok\'s Devastation buff by selling a
 	if (typeof this.cache.condition === 'undefined' || !this.cache.condition) {
 		this.cache.condition = 0;
 		AC.Data.mouseUpgrades.forEach((function(upgrade) {if (Game.Has(upgrade)) {this.cache.condition++}}).bind(this));
-		try {this.cache.condition *= Game.hasGod('ruin')} catch {this.cache.condition = 0}
+		AC.debug.log('Godzamok Loop: mouse upgrades owned =', this.cache.condition);
+		try {
+			var godVal = Game.hasGod('ruin');
+			AC.debug.log('Godzamok Loop: Game.hasGod("ruin") =', godVal);
+			this.cache.condition *= godVal;
+		} catch(err) {
+			AC.debug.warn('Godzamok Loop: Game.hasGod("ruin") threw (pantheon not available?):', err.message);
+			this.cache.condition = 0;
+		}
+		AC.debug.log('Godzamok Loop: final condition =', this.cache.condition, this.cache.condition ? '(will loop)' : '(inactive — Godzamok not slotted or no mouse upgrades)');
 	}
 	if (this.cache.condition && Game.buyMode != -1) {
 		var numObjects = Game.ObjectsById[0].amount;
+		AC.debug.log('Godzamok Loop: selling and rebuying', numObjects, 'cursors. buyMode =', Game.buyMode);
 		Game.ObjectsById[0].sell(numObjects);
 		Game.ObjectsById[0].buy(numObjects);
+	} else if (this.cache.condition && Game.buyMode == -1) {
+		AC.debug.log('Godzamok Loop: skipping — buyMode is -1 (sell mode active).');
 	}
 }, {
 	'name': 'Interval',
@@ -490,6 +659,7 @@ AC.Data.mouseUpgrades = ['Plastic mouse', 'Iron mouse', 'Titanium mouse', 'Adama
  * This function calls the appropriate function to update Auto Cookie's portion of the menu.
  */
 AC.Display.UpdateMenu = function() {
+	AC.debug.log('Display.UpdateMenu() called. Game.onMenu =', Game.onMenu);
 	if (Game.onMenu === 'prefs') {
 		AC.Display.addOptionsMenu();
 	} else if (Game.onMenu === 'stats') {
@@ -502,6 +672,13 @@ AC.Display.UpdateMenu = function() {
  * TODO: Add AC.Settings.L to the settings menu. It determines the max length of statistics.
  */
 AC.Display.addOptionsMenu = function() {
+	AC.debug.log('Display.addOptionsMenu() called.');
+	var menuEl = l('menu');
+	if (!menuEl) {
+		AC.debug.error('addOptionsMenu(): l("menu") returned null — the Options menu element does not exist yet.');
+		return;
+	}
+
 	// Create the fragment.
 	var frag = document.createDocumentFragment();
 	
@@ -524,8 +701,15 @@ AC.Display.addOptionsMenu = function() {
 	}
 	
 	// Add the fragment to the Options menu. Note that the subsection class is only used for a div inside of the menu div. That div contains all the settings.
-	var subsection = l('menu').lastChild;
-	subsection.insertBefore(frag, subsection.childNodes[subsection.childNodes.length - 1]);
+	try {
+		var subsection = l('menu').lastChild;
+		if (!subsection) { AC.debug.error('addOptionsMenu(): l("menu").lastChild is null.'); return; }
+		AC.debug.log('addOptionsMenu(): inserting fragment before last child. childNodes.length =', subsection.childNodes.length);
+		subsection.insertBefore(frag, subsection.childNodes[subsection.childNodes.length - 1]);
+		AC.debug.log('addOptionsMenu(): fragment inserted successfully.');
+	} catch(err) {
+		AC.debug.error('addOptionsMenu(): failed to insert fragment into menu:', err);
+	}
 }
 
 /**
@@ -559,6 +743,7 @@ AC.Display.addCollapseButton = function(settingObject, setting) {
  * @returns {HTMLElement}
  */
 AC.Display.addAuto = function(auto) {
+	AC.debug.log('Display.addAuto() for "' + auto.name + '". deprecated =', auto.deprecated, ', Header =', auto.Header);
 	var frag = document.createDocumentFragment();
 	
 	if (!auto.deprecated) {
@@ -597,6 +782,7 @@ AC.Display.addAuto = function(auto) {
  * TODO: break event listeners into their own functions to free memory.
  */
 AC.Display.addSetting = function(auto, setting) {
+	AC.debug.log('Display.addSetting() for "' + auto.name + '" / "' + setting.name + '" type=' + setting.type);
 	var frag = document.createDocumentFragment();
 	
 	if (setting.type === 'deprecated' || setting.type === 'header') {
